@@ -1,0 +1,293 @@
+# ============================================================================
+#  案例分析配置
+# ============================================================================
+#  对应黑板任务①：setting / unit + Core Problems
+#
+#  【这个文件为什么存在】
+#  "分析要回答哪些问题""按什么颗粒度切分文档""用什么规则去找证据"
+#  ——这三件事必须在动手前定死，而且要能被老师一眼看到。
+#  所以把它们从代码里抽出来放��配置文件，而不是散落在各步骤的 if 里。
+#
+#  【改这里会影响什么】
+#  · 分析单元（unit）改了      → step5 切分文档的粒度跟着变
+#  · 核心问题（Core Problems）  → step5 抽什么、step6 问什么，一起变
+#  · 规则的关键词/正则改了     → step5 的 L2 抽取结果立刻变
+#  本文件是**唯一**的配置来源。步骤代码里不许再写第二套关键词。
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# 案例设定
+# ---------------------------------------------------------------------------
+案例:
+  名称: 摩根士丹利大数据案例
+  # 用文件名的一部分去匹配待分析的 PDF —— 避免把路径写死在代码里
+  文档关键字: 金融服务业AI采用策略
+  所属行业: 金融服务业
+  # 案例主体名。L2 用它判断一件事：
+  # 材料里提到某条风险时，有没有点名说到这两个机构？
+  # 没有点名的，属于"教科书式风险综述"，与"本案例实际承担了什么"是两回事。
+  # 这一项是可配置的 —— 换案例只改这里，不用动代码。
+  主体:
+    - Bank of America
+    - Morgan Stanley
+  # 这条不是为了程序，是为了报告抬头。写在配置里便于换案例时只改一处。
+  副标题: "Strategies for the Adoption of Artificial Intelligence in the
+           Financial Services Sector: A Comparative Study of
+           Bank of America and Morgan Stanley"
+
+# ---------------------------------------------------------------------------
+# 分析单元（unit）
+# ---------------------------------------------------------------------------
+# "按什么颗粒度分析"必须先定。同一个问题的答案会随颗粒度变：
+# 以整篇为单位，什么都"提到了"；以句子为单位，会碎到无法归纳。
+分析单元:
+  名称: 段落
+  说明: >
+    以 Markdown 转换产物里的自然段为最小分析单元。
+    选段落而不是句子，是因为案例分析要回答的是
+    "这一点上材料说了什么"，而这个"这一点"通常横跨两三句；
+    选段落而不是整篇，是因为整篇粒度太粗，
+    只要文章里出现过一次，就会被算成"该文档支持这个说法"。
+  # 短于此长度的段落多半是标题残片、页码、版权行，直接丢弃不参与匹配
+  最短字符数: 40
+  # 标题单独成单元：它给出"这段话属于哪一节"，
+  # 是把零散证据串回结构的关键，丢掉就只剩一堆孤立的句子
+  标题单列: true
+
+# ---------------------------------------------------------------------------
+# Core Problems —— 本次分析必须回答的问题
+# ---------------------------------------------------------------------------
+# 每个问题配三样东西：
+#   规则    —— 第②步（step5_extract）用它去原文里找证据，纯代码匹配
+#   判据    —— 第③步（step6_analyze）用它指导大模型下判断
+#   缺口问法 —— 找不到证据时，明确告诉模型"这一格是空的"，而不是让它编
+#
+# 规则只用两种，都是确定性的，便于复现和向老师解释：
+#   关键词  单词/短语命中即算，大小写不敏感
+#   正则    需要模式时才用，比如"secondary data"这种两个词必须连着出现
+核心问题:
+
+  - id: CP1
+    标题: 数据来源
+    问题: 这项分析（或这家机构做分析）用的数据从哪来？是什么性质的数据？
+    判据: >
+      要能说清来源渠道，以及数据是一手还是二手。
+      二手研究本身不是缺点，但必须写出来——
+      因为它决定了后面每一个结论能走多远。
+    规则:
+      关键词:
+        - secondary data
+        - primary data
+        - secondary source
+        - qualitative
+        - quantitative
+        - interview
+        - survey
+        - questionnaire
+        - collected from
+        - methodology
+        - database
+        - official website
+        - media
+      正则:
+        - '(secondary|primary)\s+(data|research|source)'
+        - 'collected\s+from\s+[^.]{0,80}'
+    缺口问法: 材料没有交代数据来源，或只写了"公开信息"这类无法核的说法。
+
+  - id: CP2
+    标题: 技术路径
+    问题: 用了哪些具体的技术、模型或系统？有没有说明为什么用它们？
+    判据: >
+      区分两种写法：具名（Erica、GPT-4、predictive analytics）
+      和泛称（"用了 AI""用了大数据"）。
+      只有泛称时，等于没说用了什么。
+    规则:
+      关键词:
+        # 泛称：说明材料在谈 AI 这件事
+        - artificial intelligence
+        - machine learning
+        - natural language processing
+        - predictive analytics
+        - generative
+        - chatbot
+        - conversational interface
+        - virtual assistant
+        - cloud computing
+        - high performance computing
+        - analytics
+        # 具名：本案例里出现的产品与机构，逐个列出。
+        # 为什么不写一条"大写开头就是专名"的通用正则？
+        # 试过，会把英文正文里所有 "AI, The"、"Table 2 below" 全匹配上，
+        # 单这一条正则就贡献了两千多次假命中，压缩比直接变成负数。
+        # 具名物清单化虽然要手写，但**可复现、可解释、可按案例调整**，
+        # 这比一个看起来聪明实际失控的启发式划算得多。
+        - GPT
+        - Erica
+        - AskResearchGPT
+        - Debrief
+        - OpenAI
+        - Zoom
+        - Merrill
+        - Zelle
+      正则:
+        - '\bAI@[A-Za-z]+'          # AI@MS Assistant
+        - '\bGPT-\d+(?:\.\d+)?\b'   # GPT-4 / GPT-3.5
+    缺口问法: 只出现"AI""大数据"等泛称，没有任何具名技术。
+
+  - id: CP3
+    标题: 业务落点
+    问题: 这些技术用在了哪些业务环节？面向谁？影响了什么决策？
+    判据: >
+      要能定位到"哪个环节、谁在用"。
+      "赋能业务""提升效率"这类说法定位不到环节，不算数。
+    规则:
+      关键词:
+        - customer service
+        - investment advisory
+        - financial planning
+        - fraud detection
+        - credit assessment
+        - loan decision
+        - regulatory compliance
+        - wealth management
+        - financial advisor
+        - meeting
+        - research
+        - personalized
+        - account management
+        - spending
+        - savings
+        - internal
+        - front-office
+      正则:
+        - '(customer|advisor|internal|front[- ]office)[- ]centric'
+        - 'level of integration[^.]{0,60}'
+    缺口问法: 只笼统说"赋能业务""驱动决策"，定位不到具体环节和使用者。
+
+  - id: CP4
+    标题: 效果证据
+    问题: 效果有多大？这个数是怎么量出来的？有没有对照和口径？
+    判据: >
+      看数字的"包装"而不是大小。一个百分比如果没说和什么比、
+      怎么统计、多长时间内，它和"提升了很多"的信息量差不多，
+      只是披了精确的外衣。
+      step5 会把每个数字的这三项条件逐个标出来，模型据此判断。
+    规则:
+      关键词:
+        - reduce
+        - reduced
+        - increase
+        - improved
+        - saved
+        - shortened
+        - compared
+        - baseline
+        - versus
+        - average
+        - approximately
+        - around
+        - annual
+        - annually
+        - monthly
+        - daily
+        - customers
+        - clients
+        - reports
+        - meetings
+      正则:
+        - '\d+(?:[.,]\d+)?\s*(?:%|percent|million|billion|thousand)'
+        - '\b\d{1,3}(?:,\d{3})+\b'
+        - '(from|reduce[d]?\s+by|increase[d]?\s+by)\s+[^.]{0,40}\s+to\s+[^.]{0,20}'
+        - '\b(a|an|one|two|three|four|five|several|dozens|hundreds)\s+(?:million|billion|thousand)?\s*(?:research\s+)?(?:reports?|meetings?|clients?|customers?|studies)\b'
+    缺口问法: 没有任何量化陈述，或所有数字都缺基线/口径/时间窗。
+
+  - id: CP5
+    标题: 代价与风险
+    问题: 材料提到了哪些风险、代价或局限？说的是本案的情况，还是泛泛而谈？
+    判据: >
+      这里最容易糊弄：把教科书式的风险综述当成本案例的风险披露。
+      判断标准只有一条 —— 这条风险是不是**针对被研究的对象**说的。
+      step5 会标出风险句附近有没有出现案例主体名（BofA / Morgan Stanley），
+      没有的属于"泛述"，要在报告里分开讲。
+    规则:
+      关键词:
+        - risk
+        - transparency
+        - explainability
+        - black box
+        - bias
+        - fairness
+        - accountability
+        - liability
+        - legal
+        - ethical
+        - error
+        - cost
+        - privacy
+        - consent
+        - security
+        - oversight
+        - regulation
+        - regulatory
+        - skill
+        - dehuman
+      正则:
+        - '(lack of|no|limited)\s+(transparency|explainability)[^.]{0,60}'
+        - '(high|significant|substantial)\s+(cost|risk)[^.]{0,60}'
+        - 'risk[s]?\s+(that|of|associated)[^.]{0,60}'
+    缺口问法: 全文没有提到任何风险或代价。
+
+  - id: CP6
+    标题: 可迁移性与局限
+    问题: 结论的适用边界在哪？作者自己承认了哪些局限？
+    判据: >
+      作者主动声明的局限，比读者替作者推断的更有价值。
+      样本量小、二手数据、只适用于某类机构 —— 只要写了，就是加分项。
+    规则:
+      关键词:
+        - limitation
+        - limitations
+        - generaliz
+        - applicable
+        - future research
+        - sample size
+        - scope
+        - constraint
+        - two institutions
+        - only
+        - not allow
+        - exploratory
+        - further research
+      正则:
+        - 'limitation[s]?[^.]{0,120}'
+        - 'does\s+not\s+allow\s+for[^.]{0,80}'
+        - '(future|further)\s+research[^.]{0,120}'
+    缺口问法: 没有讨论适用边界，也没有承认任何局限。
+
+# ---------------------------------------------------------------------------
+# 第③步：大模型怎么调
+# ---------------------------------------------------------------------------
+模型:
+  # DeepSeek 的 OpenAI 兼容接口。密钥从环境变量 DEEPSEEK_API_KEY 读，
+  # 代码里不存、不打印、不写进任何文件。
+  接口: https://api.deepseek.com/v1/chat/completions
+  模型名: deepseek-chat
+  温度: 0.2          # 要的是可复现的分析，不是发散创意
+  最大输出token: 3000
+
+  # 送进模型的证据上限。设上限不是为了省 token 好看，
+  # 是为了逼模型只根据真实存在的证据说话 ——
+  # 证据给全了它反而会去原文里"想象"没有的东西。
+  #
+  # 这几个数直接决定 L2 相对 L1 的压缩比，必须盯着。
+  # 第一版没设上限时 L2 是原文的 173% —— 一个比原文还大的"中间层"
+  # 就没有存在的意义了。
+  每问题最多证据句: 6
+  每句最多字符: 220
+  量化陈述最多条: 15
+  风险句最多条: 8
+
+  # 硬要求：不许把 L1 原文整篇塞给模型。
+  # 这一条是本流程存在的理由 ——
+  # 模型只看到 step5 抽出来的结构化证据，看不到全文。
+  禁止送入原文: true

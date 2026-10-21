@@ -1,0 +1,7 @@
+code/__pycache__/
+*.aux
+*.log
+*.out
+code/输入/*
+code/输出/*
+code/data/*
